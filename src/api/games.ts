@@ -178,7 +178,9 @@ gameRoutes.get('/:gameId/ws', async (c) => {
     return c.json({ error: 'Not in this game' }, 403);
   }
 
-  // Forward WebSocket upgrade to Durable Object
+  // Forward the original browser WebSocket upgrade request to the Durable Object.
+  // Cloudflare preserves upgrade internals when cloning from the original Request,
+  // which is required for stable WS tunneling through Workers/DO fetch handlers.
   const roomId = c.env.GAME_ROOM.idFromName(gameId);
   const room = c.env.GAME_ROOM.get(roomId);
 
@@ -187,15 +189,7 @@ gameRoutes.get('/:gameId/ws', async (c) => {
   url.searchParams.set('playerId', player.id);
   url.searchParams.set('seat', myEntry.seat.toString());
 
-  // Preserve the browser's WS upgrade headers explicitly.
-  const wsHeaders = new Headers(c.req.raw.headers);
-  wsHeaders.set('Connection', 'Upgrade');
-  wsHeaders.set('Upgrade', 'websocket');
-
-  return room.fetch(new Request(url.toString(), {
-    method: 'GET',
-    headers: wsHeaders,
-  }));
+  return room.fetch(new Request(url.toString(), c.req.raw));
 });
 
 
