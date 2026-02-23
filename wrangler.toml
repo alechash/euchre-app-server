@@ -6,8 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # D1 Database
 [[d1_databases]]
 binding = "DB"
-database_name = "euchre-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_name = "euchre-servee"
+database_id = "0d5d974c-bccd-4f27-9857-b6c591173db2"
 migrations_dir = "migrations"
 
 # Durable Objects
