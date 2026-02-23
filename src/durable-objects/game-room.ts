@@ -11,6 +11,7 @@ import {
 } from '../game/engine';
 import { getBotAction, shouldBotGoAlone } from '../game/bot';
 import { partnerSeat } from '../game/scoring';
+import { getPlayerByToken } from '../db/queries';
 
 interface PlayerConnection {
   playerId: string;
@@ -76,7 +77,7 @@ export class GameRoom {
 
       // WebSocket upgrade
       if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-        return this.handleWebSocket(request, url);
+        return await this.handleWebSocket(request, url);
       }
 
       // REST endpoints for the Durable Object
@@ -200,24 +201,34 @@ export class GameRoom {
   // WebSocket Handler
   // ============================================================
 
-  private handleWebSocket(request: Request, url: URL): Response {
-    const playerId = url.searchParams.get('playerId');
-    const seatParam = url.searchParams.get('seat');
+  private async handleWebSocket(request: Request, url: URL): Promise<Response> {
+    const authHeader = request.headers.get('Authorization');
+    const queryToken = url.searchParams.get('authToken');
 
-    if (!playerId || seatParam === null) {
-      return new Response('Missing playerId or seat', { status: 400 });
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : queryToken ?? '';
+
+    if (!token) {
+      return new Response('Missing auth token', { status: 401 });
     }
 
     if (!this.gameState) {
       return new Response('Game not found', { status: 404 });
     }
 
-    const seat = parseInt(seatParam) as Seat;
-    const player = this.gameState.players[seat];
-
-    if (!player || player.playerId !== playerId) {
-      return new Response('Invalid seat or player', { status: 403 });
+    const dbPlayer = await getPlayerByToken(this.env.DB, token);
+    if (!dbPlayer) {
+      return new Response('Invalid auth token', { status: 401 });
     }
+
+    const seatIndex = this.gameState.players.findIndex(p => p.playerId === dbPlayer.id);
+    if (seatIndex < 0 || seatIndex > 3) {
+      return new Response('Not in this game', { status: 403 });
+    }
+
+    const seat = seatIndex as Seat;
+    const playerId = dbPlayer.id;
 
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
@@ -237,7 +248,7 @@ export class GameRoom {
 
     // Store connection
     this.connections.set(playerId, { playerId, seat, ws: server });
-    player.connected = true;
+    this.gameState.players[seat].connected = true;
 
     // Send current game state
     this.sendToPlayer(seat, {
@@ -311,6 +322,9 @@ export class GameRoom {
           displayName: this.gameState.players[conn.seat].displayName,
           message: msg.message,
         });
+        break;
+      case 'ping':
+        this.sendToWs(conn.ws, { type: 'pong', ts: msg.ts });
         break;
     }
   }

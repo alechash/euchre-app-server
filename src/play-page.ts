@@ -87,6 +87,9 @@ export function renderPlayPage(): string {
       gameState: null,
       validActions: [],
       validCards: [],
+      reconnectTimer: null,
+      reconnectAttempt: 0,
+      pingTimer: null,
     };
 
     const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
@@ -175,6 +178,32 @@ export function renderPlayPage(): string {
       sendAction({ type: actionName });
     }
 
+
+    function clearReconnectTimer() {
+      if (state.reconnectTimer) {
+        clearTimeout(state.reconnectTimer);
+        state.reconnectTimer = null;
+      }
+    }
+
+    function clearPingTimer() {
+      if (state.pingTimer) {
+        clearInterval(state.pingTimer);
+        state.pingTimer = null;
+      }
+    }
+
+    function scheduleReconnect() {
+      if (!state.gameId || !state.token || state.reconnectTimer) return;
+      const delay = Math.min(10000, 1000 * (2 ** state.reconnectAttempt));
+      state.reconnectAttempt += 1;
+      log('Reconnecting WebSocket in ' + delay + 'ms');
+      state.reconnectTimer = setTimeout(() => {
+        state.reconnectTimer = null;
+        connectWs();
+      }, delay);
+    }
+
     function connectWs() {
       if (!state.gameId || !state.token) return;
       if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) return;
@@ -184,8 +213,20 @@ export function renderPlayPage(): string {
       const ws = new WebSocket(url);
       state.ws = ws;
 
-      ws.onopen = () => log('WebSocket connected');
-      ws.onclose = () => log('WebSocket disconnected');
+      ws.onopen = () => {
+        state.reconnectAttempt = 0;
+        clearReconnectTimer();
+        clearPingTimer();
+        state.pingTimer = setInterval(() => {
+          send({ type: 'ping', ts: Date.now() });
+        }, 25000);
+        log('WebSocket connected');
+      };
+      ws.onclose = () => {
+        clearPingTimer();
+        log('WebSocket disconnected');
+        scheduleReconnect();
+      };
       ws.onerror = () => log('WebSocket error');
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
@@ -200,6 +241,9 @@ export function renderPlayPage(): string {
         if (msg.type === 'your_turn') {
           state.validActions = msg.validActions || [];
           state.validCards = msg.validCards || [];
+        }
+        if (msg.type === 'pong') {
+          return;
         }
         if (msg.type === 'error') {
           alert(msg.message);
