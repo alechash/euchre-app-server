@@ -163,7 +163,7 @@ gameRoutes.get('/:gameId/ws', async (c) => {
   const gameId = c.req.param('gameId');
   const upgradeHeader = c.req.header('Upgrade');
 
-  if (upgradeHeader !== 'websocket') {
+  if (upgradeHeader?.toLowerCase() !== 'websocket') {
     return c.json({ error: 'Expected WebSocket upgrade' }, 426);
   }
 
@@ -187,8 +187,14 @@ gameRoutes.get('/:gameId/ws', async (c) => {
   url.searchParams.set('playerId', player.id);
   url.searchParams.set('seat', myEntry.seat.toString());
 
+  // Preserve the browser's WS upgrade headers explicitly.
+  const wsHeaders = new Headers(c.req.raw.headers);
+  wsHeaders.set('Connection', 'Upgrade');
+  wsHeaders.set('Upgrade', 'websocket');
+
   return room.fetch(new Request(url.toString(), {
-    headers: c.req.raw.headers,
+    method: 'GET',
+    headers: wsHeaders,
   }));
 });
 
