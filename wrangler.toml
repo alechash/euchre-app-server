@@ -1,4 +1,4 @@
-name = "euchre-game-server"
+name = "euchre-app-server"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
@@ -19,4 +19,4 @@ bindings = [
 # Durable Object migrations
 [[migrations]]
 tag = "v1"
-new_classes = ["GameRoom"]
+new_sqlite_classes = ["GameRoom"]
