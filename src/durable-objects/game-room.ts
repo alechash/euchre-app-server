@@ -18,6 +18,11 @@ interface PlayerConnection {
   ws: WebSocket;
 }
 
+interface WebSocketAttachment {
+  playerId: string;
+  seat: Seat;
+}
+
 /**
  * GameRoom Durable Object
  *
@@ -37,6 +42,25 @@ export class GameRoom {
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
+    this.restoreConnectionsFromHibernation();
+  }
+
+  private restoreConnectionsFromHibernation(): void {
+    const sockets = this.state.getWebSockets();
+
+    for (const ws of sockets) {
+      const attachment = ws.deserializeAttachment() as WebSocketAttachment | null;
+      if (!attachment) {
+        ws.close(1011, 'Missing websocket attachment');
+        continue;
+      }
+
+      this.connections.set(attachment.playerId, {
+        playerId: attachment.playerId,
+        seat: attachment.seat,
+        ws,
+      });
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -51,7 +75,7 @@ export class GameRoom {
       }
 
       // WebSocket upgrade
-      if (request.headers.get('Upgrade') === 'websocket') {
+      if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
         return this.handleWebSocket(request, url);
       }
 
@@ -198,7 +222,18 @@ export class GameRoom {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
 
+    // Replace any previous websocket for this player (reconnect case)
+    const existingConnection = this.connections.get(playerId);
+    if (existingConnection) {
+      try {
+        existingConnection.ws.close(1000, 'Replaced by a newer connection');
+      } catch {
+        // Existing socket may already be closed.
+      }
+    }
+
     this.state.acceptWebSocket(server, [playerId]);
+    server.serializeAttachment({ playerId, seat } satisfies WebSocketAttachment);
 
     // Store connection
     this.connections.set(playerId, { playerId, seat, ws: server });
