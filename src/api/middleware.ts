@@ -9,12 +9,16 @@ import { getPlayerByToken } from '../db/queries';
  */
 export async function authMiddleware(c: Context<AppEnv>, next: Next): Promise<void | Response> {
   const authHeader = c.req.header('Authorization');
+  const url = new URL(c.req.url);
+  const queryToken = url.searchParams.get('authToken');
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : queryToken ?? '';
+
+  if (!token) {
     return c.json({ error: 'Missing or invalid Authorization header' }, 401);
   }
-
-  const token = authHeader.slice(7);
   const player = await getPlayerByToken(c.env.DB, token);
 
   if (!player) {

@@ -3,6 +3,7 @@ import { AppEnv } from './types';
 import { authRoutes } from './api/auth';
 import { gameRoutes } from './api/games';
 import { authMiddleware, corsMiddleware } from './api/middleware';
+import { renderPlayPage } from './play-page';
 
 // Re-export Durable Object
 export { GameRoom } from './durable-objects/game-room';
@@ -19,6 +20,11 @@ app.get('/', (c) => {
     version: '1.0.0',
     status: 'ok',
   });
+});
+
+// Lightweight browser client for quickly playing against the API
+app.get('/play', (c) => {
+  return c.html(renderPlayPage());
 });
 
 // Public auth route: registration
