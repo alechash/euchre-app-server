@@ -154,6 +154,46 @@ gameRoutes.post('/join', async (c) => {
 });
 
 /**
+ * WebSocket upgrade endpoint.
+ * GET /api/games/:gameId/ws
+ */
+gameRoutes.get('/:gameId/ws', async (c) => {
+  const player = c.get('player');
+
+  const gameId = c.req.param('gameId');
+  const upgradeHeader = c.req.header('Upgrade');
+
+  if (upgradeHeader !== 'websocket') {
+    return c.json({ error: 'Expected WebSocket upgrade' }, 426);
+  }
+
+  const game = await getGameById(c.env.DB, gameId);
+  if (!game) {
+    return c.json({ error: 'Game not found' }, 404);
+  }
+
+  const gamePlayers = await getGamePlayers(c.env.DB, gameId);
+  const myEntry = gamePlayers.find(p => p.player_id === player.id);
+  if (!myEntry) {
+    return c.json({ error: 'Not in this game' }, 403);
+  }
+
+  // Forward WebSocket upgrade to Durable Object
+  const roomId = c.env.GAME_ROOM.idFromName(gameId);
+  const room = c.env.GAME_ROOM.get(roomId);
+
+  const url = new URL(c.req.url);
+  url.pathname = '/ws';
+  url.searchParams.set('playerId', player.id);
+  url.searchParams.set('seat', myEntry.seat.toString());
+
+  return room.fetch(new Request(url.toString(), {
+    headers: c.req.raw.headers,
+  }));
+});
+
+
+/**
  * GET /api/games/:gameId
  * Get game details.
  */
@@ -219,45 +259,6 @@ gameRoutes.get('/', async (c) => {
       createdAt: g.created_at,
     })),
   });
-});
-
-/**
- * WebSocket upgrade endpoint.
- * GET /api/games/:gameId/ws
- */
-gameRoutes.get('/:gameId/ws', async (c) => {
-  const player = c.get('player');
-
-  const gameId = c.req.param('gameId');
-  const upgradeHeader = c.req.header('Upgrade');
-
-  if (upgradeHeader !== 'websocket') {
-    return c.json({ error: 'Expected WebSocket upgrade' }, 426);
-  }
-
-  const game = await getGameById(c.env.DB, gameId);
-  if (!game) {
-    return c.json({ error: 'Game not found' }, 404);
-  }
-
-  const gamePlayers = await getGamePlayers(c.env.DB, gameId);
-  const myEntry = gamePlayers.find(p => p.player_id === player.id);
-  if (!myEntry) {
-    return c.json({ error: 'Not in this game' }, 403);
-  }
-
-  // Forward WebSocket upgrade to Durable Object
-  const roomId = c.env.GAME_ROOM.idFromName(gameId);
-  const room = c.env.GAME_ROOM.get(roomId);
-
-  const url = new URL(c.req.url);
-  url.pathname = '/ws';
-  url.searchParams.set('playerId', player.id);
-  url.searchParams.set('seat', myEntry.seat.toString());
-
-  return room.fetch(new Request(url.toString(), {
-    headers: c.req.raw.headers,
-  }));
 });
 
 export { gameRoutes };
