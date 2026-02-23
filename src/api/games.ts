@@ -184,12 +184,7 @@ gameRoutes.get('/:gameId/ws', async (c) => {
   const roomId = c.env.GAME_ROOM.idFromName(gameId);
   const room = c.env.GAME_ROOM.get(roomId);
 
-  const url = new URL(c.req.url);
-  url.pathname = '/ws';
-  url.searchParams.set('playerId', player.id);
-  url.searchParams.set('seat', myEntry.seat.toString());
-
-  return room.fetch(new Request(url.toString(), c.req.raw));
+  return room.fetch(c.req.raw);
 });
 
 
