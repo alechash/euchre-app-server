@@ -158,8 +158,6 @@ gameRoutes.post('/join', async (c) => {
  * GET /api/games/:gameId/ws
  */
 gameRoutes.get('/:gameId/ws', async (c) => {
-  const player = c.get('player');
-
   const gameId = c.req.param('gameId');
   const upgradeHeader = c.req.header('Upgrade');
 
@@ -167,20 +165,9 @@ gameRoutes.get('/:gameId/ws', async (c) => {
     return c.json({ error: 'Expected WebSocket upgrade' }, 426);
   }
 
-  const game = await getGameById(c.env.DB, gameId);
-  if (!game) {
-    return c.json({ error: 'Game not found' }, 404);
-  }
-
-  const gamePlayers = await getGamePlayers(c.env.DB, gameId);
-  const myEntry = gamePlayers.find(p => p.player_id === player.id);
-  if (!myEntry) {
-    return c.json({ error: 'Not in this game' }, 403);
-  }
-
   // Forward the original browser WebSocket upgrade request to the Durable Object.
-  // Cloudflare preserves upgrade internals when cloning from the original Request,
-  // which is required for stable WS tunneling through Workers/DO fetch handlers.
+  // Keep this path minimal: DO performs game existence + membership validation
+  // during the handshake, which avoids extra API-layer DB roundtrips/timeouts.
   const roomId = c.env.GAME_ROOM.idFromName(gameId);
   const room = c.env.GAME_ROOM.get(roomId);
 
