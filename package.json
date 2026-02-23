@@ -1,0 +1,28 @@
+{
+  "name": "euchre-app-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply euchre-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply euchre-db --remote"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:42581/git/alechash/euchre-app-server"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260302.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.67.1"
+  },
+  "dependencies": {
+    "hono": "^4.12.2"
+  }
+}
