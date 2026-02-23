@@ -127,14 +127,16 @@ export type ServerMessage =
   | { type: 'game_over'; winningTeam: Team; scores: [number, number] }
   | { type: 'your_turn'; validActions: GameAction['type'][]; validCards?: Card[] }
   | { type: 'error'; message: string }
-  | { type: 'chat'; seat: Seat; displayName: string; message: string };
+  | { type: 'chat'; seat: Seat; displayName: string; message: string }
+  | { type: 'pong'; ts: number };
 
 export type ClientMessage =
   | { type: 'action'; action: GameAction }
   | { type: 'start_game' }
   | { type: 'add_bot'; seat: Seat; difficulty?: BotDifficulty }
   | { type: 'remove_bot'; seat: Seat }
-  | { type: 'chat'; message: string };
+  | { type: 'chat'; message: string }
+  | { type: 'ping'; ts: number };
 
 // Client-visible game state (hides other players' cards)
 export interface ClientGameState {

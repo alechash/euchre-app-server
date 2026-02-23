@@ -323,6 +323,9 @@ export class GameRoom {
           message: msg.message,
         });
         break;
+      case 'ping':
+        this.sendToWs(conn.ws, { type: 'pong', ts: msg.ts });
+        break;
     }
   }
 
