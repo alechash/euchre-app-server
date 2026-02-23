@@ -1,0 +1,22 @@
+name = "euchre-game-server"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "euchre-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Durable Objects
+[durable_objects]
+bindings = [
+  { name = "GAME_ROOM", class_name = "GameRoom" }
+]
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoom"]
