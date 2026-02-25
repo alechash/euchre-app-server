@@ -1252,8 +1252,8 @@ function renderGame() {
   var dirMap = {
     south: S.seat,
     north: (S.seat + 2) % 4,
-    west:  (S.seat + 3) % 4,
-    east:  (S.seat + 1) % 4
+    west:  (S.seat + 1) % 4,
+    east:  (S.seat + 3) % 4
   };
   var dirs = ['south', 'north', 'west', 'east'];
   for (var d = 0; d < dirs.length; d++) {
