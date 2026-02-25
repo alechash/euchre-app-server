@@ -1572,6 +1572,19 @@ function handleMsg(msg) {
 
     case 'player_joined':
       toast(msg.displayName + ' joined the table!');
+      if (S.gs) {
+        if (!S.gs.players) S.gs.players = [];
+        S.gs.players = S.gs.players.filter(function(p) { return p.seat !== msg.seat; });
+        S.gs.players.push({ seat: msg.seat, displayName: msg.displayName, isBot: !!msg.isBot });
+        renderLobby();
+      }
+      break;
+
+    case 'player_left':
+      if (S.gs && S.gs.players) {
+        S.gs.players = S.gs.players.filter(function(p) { return p.seat !== msg.seat; });
+        renderLobby();
+      }
       break;
 
     case 'hand_dealt':
