@@ -1595,36 +1595,44 @@ window.newGame = newGame;
 // ============================================================
 //  AUTH
 // ============================================================
-document.getElementById('enterBtn').addEventListener('click', async function() {
+async function doEnter() {
   var nameEl = document.getElementById('nameInput');
   var name   = nameEl.value.trim() || 'Player';
   var btn    = document.getElementById('enterBtn');
   btn.disabled = true; btn.textContent = 'Joining\u2026';
 
-  // Reuse existing token if available
-  if (S.token) {
-    S.dname = name; saveAuth(); renderLobby();
-    if (S.gameId) { await fetchGs(); connectWs(); }
+  try {
+    // Reuse existing token if available
+    if (S.token) {
+      S.dname = name; saveAuth(); renderLobby();
+      if (S.gameId) { await fetchGs(); connectWs(); }
+      return;
+    }
+
+    var res  = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: name })
+    });
+    var data = await res.json();
+
+    if (!res.ok) { toast('Registration failed \u2014 ' + (data.error || 'try again')); return; }
+
+    S.token    = data.authToken;
+    S.playerId = data.playerId;
+    S.dname    = data.displayName;
+    saveAuth();
+    renderLobby();
+  } catch(e) {
+    toast('\u26A0\uFE0F Could not connect \u2014 check your connection');
+  } finally {
     btn.disabled = false; btn.textContent = 'Enter the Table \u2192';
-    return;
   }
+}
 
-  var res  = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: name })
-  });
-  var data = await res.json();
-  btn.disabled = false; btn.textContent = 'Enter the Table \u2192';
-
-  if (!res.ok) { toast('Registration failed \u2014 try again'); return; }
-
-  S.token    = data.authToken;
-  S.playerId = data.playerId;
-  S.dname    = data.displayName;
-  saveAuth();
-  renderLobby();
-  if (S.gameId) { await fetchGs(); connectWs(); }
+document.getElementById('enterBtn').addEventListener('click', doEnter);
+document.getElementById('nameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doEnter();
 });
 
 // ============================================================
@@ -1639,15 +1647,22 @@ document.getElementById('createBtn').addEventListener('click', async function() 
   saveGame(); renderLobby(); connectWs(); await fetchGs();
 });
 
-document.getElementById('joinBtn').addEventListener('click', async function() {
+async function doJoin() {
   if (!S.token) { toast('Enter your name first!'); return; }
   var code = document.getElementById('codeInput').value.trim().toUpperCase();
   if (!code) { toast('Enter an invite code!'); return; }
-  var res  = await api('/api/games/join', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
-  var data = await res.json();
-  if (!res.ok) { toast('Could not join: ' + (data.error || 'Invalid code')); return; }
-  S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
-  saveGame(); renderLobby(); connectWs(); await fetchGs();
+  try {
+    var res  = await api('/api/games/join', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
+    var data = await res.json();
+    if (!res.ok) { toast('Could not join: ' + (data.error || 'Invalid code')); return; }
+    S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
+    saveGame(); renderLobby(); connectWs(); await fetchGs();
+  } catch(e) { toast('\u26A0\uFE0F Connection error \u2014 try again'); }
+}
+
+document.getElementById('joinBtn').addEventListener('click', doJoin);
+document.getElementById('codeInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doJoin();
 });
 
 document.getElementById('botsBtn').addEventListener('click', function() {
