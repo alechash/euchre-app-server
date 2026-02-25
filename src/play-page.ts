@@ -1785,7 +1785,9 @@ document.getElementById('botsBtn').addEventListener('click', function() {
     // Never add a bot to the user's own seat, even when S.gs hasn't loaded yet
     var found = (S.seat >= 0 && i === S.seat);
     if (!found) {
-      for (var j = 0; j < players.length; j++) { if (players[j].seat === i) { found = true; break; } }
+      for (var j = 0; j < players.length; j++) {
+        if (players[j].seat === i && (players[j].playerId !== null || players[j].isBot)) { found = true; break; }
+      }
     }
     if (!found) send({ type: 'add_bot', seat: i, difficulty: 'medium' });
   }
