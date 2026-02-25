@@ -1320,9 +1320,9 @@ function renderActions(gs) {
     heading.textContent = 'Order up the ' + fcTxt + '?';
     var html = '<div class="action-btns">';
     if (S.actions.indexOf('order_up') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\'order_up\')">Order Up \u2191</button>';
+      html += '<button class="btn btn-gold" onclick="doAct(\\\'order_up\\\')">Order Up \u2191</button>';
     if (S.actions.indexOf('pass') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\'pass\')">Pass</button>';
+      html += '<button class="btn btn-ghost" onclick="doAct(\\\'pass\\\')">Pass</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
@@ -1344,14 +1344,14 @@ function renderActions(gs) {
       var sd  = suitDefs[s];
       var dis = sd.suit === disabled ? ' disabled' : '';
       html += '<button class="suit-opt ' + sd.col + '"' + dis
-        + ' onclick="doCallTrump(\'' + sd.suit + '\')">'
+        + ' onclick="doCallTrump(\\\'' + sd.suit + '\\\')">'
         + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
         + '</button>';
     }
     html += '</div>';
     if (S.actions.indexOf('pass') !== -1)
       html += '<div class="action-btns" style="margin-top:10px">'
-        + '<button class="btn btn-ghost" onclick="doAct(\'pass\')">Pass</button></div>';
+        + '<button class="btn btn-ghost" onclick="doAct(\\\'pass\\\')">Pass</button></div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
     return;
@@ -1362,9 +1362,9 @@ function renderActions(gs) {
     heading.textContent = 'Go Alone?';
     var html = '<div class="action-btns">';
     if (S.actions.indexOf('go_alone') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\'go_alone\')">Go Alone! \uD83C\uDFAF</button>';
+      html += '<button class="btn btn-gold" onclick="doAct(\\\'go_alone\\\')">Go Alone! \uD83C\uDFAF</button>';
     if (S.actions.indexOf('play_with_partner') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\'play_with_partner\')">Play with Partner</button>';
+      html += '<button class="btn btn-ghost" onclick="doAct(\\\'play_with_partner\\\')">Play with Partner</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
