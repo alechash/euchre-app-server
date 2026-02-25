@@ -878,6 +878,7 @@ export function renderPlayPage(): string {
     <div style="text-align:center;margin-top:6px;font-size:.75rem;color:var(--gold);display:none" id="discard-hint">
       Choose a card to discard
     </div>
+    <div style="text-align:center;margin-top:6px;font-size:.75rem;color:var(--text-dim);display:none" id="turn-status"></div>
   </div>
 
   <!-- Action overlay -->
@@ -938,6 +939,7 @@ function saveGame() {
 function clearGame() {
   S.gameId = ''; S.invCode = ''; S.seat = -1;
   S.gs = null; S.actions = []; S.vcards = []; S.myTurn = false;
+  _sendQueue = []; // discard any pending messages from the old game
   saveGame();
 }
 
@@ -1239,18 +1241,37 @@ function renderTricks(gs) {
 }
 
 function renderHand(gs) {
-  var handEl   = document.getElementById('hand-cards');
-  var labelEl  = document.getElementById('hand-label');
-  var discHint = document.getElementById('discard-hint');
+  var handEl    = document.getElementById('hand-cards');
+  var labelEl   = document.getElementById('hand-label');
+  var discHint  = document.getElementById('discard-hint');
+  var statusEl  = document.getElementById('turn-status');
   handEl.innerHTML = '';
 
   var cards   = (gs.hand && gs.hand.yourCards) ? gs.hand.yourCards : [];
   var phase   = gs.phase;
-  var isDiscard = phase === 'discard' && gs.hand && gs.hand.dealerSeat === S.seat && S.actions.indexOf('discard') !== -1;
-  var isPlay    = phase === 'playing' && S.myTurn && S.actions.indexOf('play_card') !== -1;
+  // Use currentTurnSeat as the authoritative signal — S.myTurn can be stale
+  var myActualTurn = gs.hand && gs.hand.currentTurnSeat === S.seat;
+  var isDiscard = phase === 'discard' && myActualTurn && S.actions.indexOf('discard') !== -1;
+  var isPlay    = phase === 'playing' && myActualTurn && S.actions.indexOf('play_card') !== -1;
 
   labelEl.style.display  = isPlay ? 'block' : 'none';
   discHint.style.display = isDiscard ? 'block' : 'none';
+
+  // Show who we're waiting on (or hide if it's our turn / no hand in progress)
+  if (statusEl) {
+    if (gs.hand && gs.hand.currentTurnSeat !== null && !myActualTurn
+        && phase !== 'waiting' && phase !== 'hand_over' && phase !== 'game_over') {
+      var waitSeat = gs.hand.currentTurnSeat;
+      var waitName = '';
+      for (var w = 0; w < gs.players.length; w++) {
+        if (gs.players[w].seat === waitSeat) { waitName = gs.players[w].displayName; break; }
+      }
+      statusEl.textContent = waitName ? '\u23F3 Waiting for ' + waitName + '\u2026' : '';
+      statusEl.style.display = waitName ? 'block' : 'none';
+    } else {
+      statusEl.style.display = 'none';
+    }
+  }
 
   for (var i = 0; i < cards.length; i++) {
     (function(card) {
@@ -1528,6 +1549,12 @@ function handleMsg(msg) {
           }
         }
       }
+      // Clear stale turn state whenever the server says it's not our turn.
+      // This prevents old actions/panels from lingering after another player acts.
+      var gsTurnSeat = msg.state.hand ? msg.state.hand.currentTurnSeat : null;
+      if (gsTurnSeat !== S.seat) {
+        S.myTurn = false; S.actions = []; S.vcards = [];
+      }
       route();
       break;
 
@@ -1742,8 +1769,11 @@ document.getElementById('botsBtn').addEventListener('click', function() {
   if (!S.gameId) return;
   var players = (S.gs && S.gs.players) ? S.gs.players : [];
   for (var i = 0; i < 4; i++) {
-    var found = false;
-    for (var j = 0; j < players.length; j++) { if (players[j].seat === i) { found = true; break; } }
+    // Never add a bot to the user's own seat, even when S.gs hasn't loaded yet
+    var found = (S.seat >= 0 && i === S.seat);
+    if (!found) {
+      for (var j = 0; j < players.length; j++) { if (players[j].seat === i) { found = true; break; } }
+    }
     if (!found) send({ type: 'add_bot', seat: i, difficulty: 'medium' });
   }
 });
