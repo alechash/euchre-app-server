@@ -1294,44 +1294,55 @@ function renderActions(gs) {
   var body     = document.getElementById('act-body');
   var phase    = gs.phase;
 
-  var myTurnInTrump =
-    (phase === 'trump_round1' || phase === 'trump_round2') &&
-    gs.trumpCall && gs.trumpCall.currentSeat === S.seat;
+  // Use the actions list to determine what kind of decision is needed.
+  // (gs.trumpCall is not part of ClientGameState so we can't use it.)
+  var acts     = S.actions;
+  var hasOrderUp   = acts.indexOf('order_up')          !== -1;
+  var hasCallTrump = acts.indexOf('call_trump')         !== -1;
+  var hasDiscard   = acts.indexOf('discard')            !== -1;
+  var hasPlayCard  = acts.indexOf('play_card')          !== -1;
+  var hasGoAlone   = acts.indexOf('go_alone')           !== -1;
+  var hasPartner   = acts.indexOf('play_with_partner')  !== -1;
+  var hasPass      = acts.indexOf('pass')               !== -1;
 
-  var hasGoAlone =
-    S.actions.indexOf('go_alone') !== -1 ||
-    S.actions.indexOf('play_with_partner') !== -1;
-
-  if (phase === 'waiting' || phase === 'dealing') {
+  // Nothing for this player to decide right now
+  if (acts.length === 0 || phase === 'waiting' || phase === 'dealing') {
     overlay.style.display = 'none';
     return;
   }
 
-  // Discard: handled by hand cards, no panel needed
-  if (phase === 'discard' && gs.hand && gs.hand.dealerSeat === S.seat) {
+  // Discard / play-card: handled by clicking cards in hand
+  if (hasDiscard || hasPlayCard) {
     overlay.style.display = 'none';
     return;
   }
 
-  // Trump Round 1
-  if (phase === 'trump_round1' && myTurnInTrump) {
-    var fc   = gs.hand && gs.hand.flippedCard;
+  // ── Trump Round 1 ──────────────────────────────────────────
+  // validActions: ['pass', 'order_up', (optional) 'go_alone']
+  // go_alone here = order up AND declare alone (no suit needed)
+  if (hasOrderUp || (hasPass && phase === 'trump_round1')) {
+    var fc    = gs.hand && gs.hand.flippedCard;
     var fcTxt = fc ? (fc.rank + ' of ' + fc.suit) : 'the card';
     heading.textContent = 'Order up the ' + fcTxt + '?';
     var html = '<div class="action-btns">';
-    if (S.actions.indexOf('order_up') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\\\'order_up\\\')">Order Up \u2191</button>';
-    if (S.actions.indexOf('pass') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\\\'pass\\\')">Pass</button>';
+    if (hasOrderUp)
+      html += '<button class="btn btn-gold" data-a="order_up">Order Up \u2191</button>';
+    if (hasGoAlone)
+      html += '<button class="btn btn-gold" data-a="go_alone" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">'
+        + 'Go Alone! \uD83C\uDFAF</button>';
+    if (hasPass)
+      html += '<button class="btn btn-ghost" data-a="pass">Pass</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
     return;
   }
 
-  // Trump Round 2
-  if (phase === 'trump_round2' && myTurnInTrump) {
-    heading.textContent = 'Name a trump suit';
+  // ── Trump Round 2 ──────────────────────────────────────────
+  // validActions: ['call_trump', (optional) 'go_alone', (optional) 'pass']
+  // go_alone here = call THAT suit AND play alone — needs a suit, so we
+  // show a second row of suit buttons labelled "Alone".
+  if (hasCallTrump) {
     var disabled = gs.hand && gs.hand.flippedCard ? gs.hand.flippedCard.suit : null;
     var suitDefs = [
       { suit: 'hearts',   sym: '\u2665', col: 'red'   },
@@ -1339,32 +1350,63 @@ function renderActions(gs) {
       { suit: 'clubs',    sym: '\u2663', col: 'black' },
       { suit: 'spades',   sym: '\u2660', col: 'black' }
     ];
-    var html = '<div class="suit-grid">';
-    for (var s = 0; s < suitDefs.length; s++) {
-      var sd  = suitDefs[s];
-      var dis = sd.suit === disabled ? ' disabled' : '';
-      html += '<button class="suit-opt ' + sd.col + '"' + dis
-        + ' onclick="doCallTrump(\\\'' + sd.suit + '\\\')">'
-        + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
-        + '</button>';
+
+    if (hasGoAlone) {
+      heading.textContent = 'Name trump — or go alone';
+      var html = '<div style="font-size:.7rem;color:var(--text-dim);margin-bottom:6px;text-align:center">With partner:</div>'
+        + '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' data-suit="' + sd.suit + '">'
+          + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
+          + '</button>';
+      }
+      html += '</div>';
+      html += '<div style="font-size:.7rem;color:var(--gold);margin:10px 0 6px;text-align:center">\uD83C\uDFAF Go Alone:</div>'
+        + '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' style="border-color:#7c3aed;opacity:.85"'
+          + ' data-alone-suit="' + sd.suit + '">'
+          + sd.sym + ' Alone</button>';
+      }
+      html += '</div>';
+    } else {
+      heading.textContent = 'Name a trump suit';
+      var html = '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' data-suit="' + sd.suit + '">'
+          + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
+          + '</button>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
-    if (S.actions.indexOf('pass') !== -1)
+
+    if (hasPass)
       html += '<div class="action-btns" style="margin-top:10px">'
-        + '<button class="btn btn-ghost" onclick="doAct(\\\'pass\\\')">Pass</button></div>';
+        + '<button class="btn btn-ghost" data-a="pass">Pass</button></div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
     return;
   }
 
-  // Go alone decision
-  if (hasGoAlone) {
+  // ── Standalone go_alone / play_with_partner ────────────────
+  // Only reached if validActions has ONLY those (not mixed with trump actions).
+  if (hasGoAlone || hasPartner) {
     heading.textContent = 'Go Alone?';
     var html = '<div class="action-btns">';
-    if (S.actions.indexOf('go_alone') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\\\'go_alone\\\')">Go Alone! \uD83C\uDFAF</button>';
-    if (S.actions.indexOf('play_with_partner') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\\\'play_with_partner\\\')">Play with Partner</button>';
+    if (hasGoAlone)
+      html += '<button class="btn btn-gold" data-a="go_alone"'
+        + ' style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">Go Alone! \uD83C\uDFAF</button>';
+    if (hasPartner)
+      html += '<button class="btn btn-ghost" data-a="play_with_partner">Play with Partner</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
@@ -1387,8 +1429,26 @@ function doCallTrump(suit) {
   S.actions = []; S.myTurn = false;
   if (S.gs) renderGame();
 }
-window.doAct = doAct;
-window.doCallTrump = doCallTrump;
+function doGoAlone(suit) {
+  // suit is only needed in round 2; in round 1 go_alone has no suit
+  var action = suit ? { type: 'go_alone', suit: suit } : { type: 'go_alone' };
+  sendAction(action);
+  S.actions = []; S.myTurn = false;
+  if (S.gs) renderGame();
+}
+// Delegated listener for all action-panel buttons (avoids inline onclick quoting issues)
+document.getElementById('act-body').addEventListener('click', function(e) {
+  var btn = e.target;
+  while (btn && btn !== this) {
+    var a         = btn.getAttribute && btn.getAttribute('data-a');
+    var suit      = btn.getAttribute && btn.getAttribute('data-suit');
+    var aloneSuit = btn.getAttribute && btn.getAttribute('data-alone-suit');
+    if (a)         { doAct(a);            return; }
+    if (suit)      { doCallTrump(suit);   return; }
+    if (aloneSuit) { doGoAlone(aloneSuit); return; }
+    btn = btn.parentNode;
+  }
+});
 
 // ============================================================
 //  WEBSOCKET
@@ -1402,8 +1462,18 @@ function setConn(state) {
   txt.textContent = map[state][1];
 }
 
+var _sendQueue = [];
 function send(msg) {
-  if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(JSON.stringify(msg));
+  if (S.ws && S.ws.readyState === WebSocket.OPEN) {
+    S.ws.send(JSON.stringify(msg));
+  } else {
+    _sendQueue.push(msg); // hold until socket opens
+  }
+}
+function flushQueue() {
+  while (_sendQueue.length && S.ws && S.ws.readyState === WebSocket.OPEN) {
+    S.ws.send(JSON.stringify(_sendQueue.shift()));
+  }
 }
 function sendAction(action) { send({ type: 'action', action: action }); }
 
@@ -1431,6 +1501,7 @@ function connectWs() {
     S.rattempt = 0; clearTimers();
     S.ptimer = setInterval(function() { send({ type: 'ping', ts: Date.now() }); }, 25000);
     setConn('live');
+    flushQueue();
     toast('\u2705 Connected!');
   };
   ws.onclose = function() { clearTimers(); setConn('off'); scheduleReconnect(); };
@@ -1595,36 +1666,44 @@ window.newGame = newGame;
 // ============================================================
 //  AUTH
 // ============================================================
-document.getElementById('enterBtn').addEventListener('click', async function() {
+async function doEnter() {
   var nameEl = document.getElementById('nameInput');
   var name   = nameEl.value.trim() || 'Player';
   var btn    = document.getElementById('enterBtn');
   btn.disabled = true; btn.textContent = 'Joining\u2026';
 
-  // Reuse existing token if available
-  if (S.token) {
-    S.dname = name; saveAuth(); renderLobby();
-    if (S.gameId) { await fetchGs(); connectWs(); }
+  try {
+    // Reuse existing token if available
+    if (S.token) {
+      S.dname = name; saveAuth(); renderLobby();
+      if (S.gameId) { await fetchGs(); connectWs(); }
+      return;
+    }
+
+    var res  = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: name })
+    });
+    var data = await res.json();
+
+    if (!res.ok) { toast('Registration failed \u2014 ' + (data.error || 'try again')); return; }
+
+    S.token    = data.authToken;
+    S.playerId = data.playerId;
+    S.dname    = data.displayName;
+    saveAuth();
+    renderLobby();
+  } catch(e) {
+    toast('\u26A0\uFE0F Could not connect \u2014 check your connection');
+  } finally {
     btn.disabled = false; btn.textContent = 'Enter the Table \u2192';
-    return;
   }
+}
 
-  var res  = await fetch('/api/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ displayName: name })
-  });
-  var data = await res.json();
-  btn.disabled = false; btn.textContent = 'Enter the Table \u2192';
-
-  if (!res.ok) { toast('Registration failed \u2014 try again'); return; }
-
-  S.token    = data.authToken;
-  S.playerId = data.playerId;
-  S.dname    = data.displayName;
-  saveAuth();
-  renderLobby();
-  if (S.gameId) { await fetchGs(); connectWs(); }
+document.getElementById('enterBtn').addEventListener('click', doEnter);
+document.getElementById('nameInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doEnter();
 });
 
 // ============================================================
@@ -1632,22 +1711,31 @@ document.getElementById('enterBtn').addEventListener('click', async function() {
 // ============================================================
 document.getElementById('createBtn').addEventListener('click', async function() {
   if (!S.token) { toast('Enter your name first!'); return; }
-  var res  = await api('/api/games', { method: 'POST', body: JSON.stringify({}) });
-  var data = await res.json();
-  if (!res.ok) { toast('Could not create game'); return; }
-  S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
-  saveGame(); renderLobby(); connectWs(); await fetchGs();
+  try {
+    var res  = await api('/api/games', { method: 'POST', body: JSON.stringify({}) });
+    var data = await res.json();
+    if (!res.ok) { toast('Could not create game: ' + (data.error || 'try again')); return; }
+    S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
+    saveGame(); renderLobby(); connectWs(); await fetchGs();
+  } catch(e) { toast('\u26A0\uFE0F Connection error \u2014 try again'); }
 });
 
-document.getElementById('joinBtn').addEventListener('click', async function() {
+async function doJoin() {
   if (!S.token) { toast('Enter your name first!'); return; }
   var code = document.getElementById('codeInput').value.trim().toUpperCase();
   if (!code) { toast('Enter an invite code!'); return; }
-  var res  = await api('/api/games/join', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
-  var data = await res.json();
-  if (!res.ok) { toast('Could not join: ' + (data.error || 'Invalid code')); return; }
-  S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
-  saveGame(); renderLobby(); connectWs(); await fetchGs();
+  try {
+    var res  = await api('/api/games/join', { method: 'POST', body: JSON.stringify({ inviteCode: code }) });
+    var data = await res.json();
+    if (!res.ok) { toast('Could not join: ' + (data.error || 'Invalid code')); return; }
+    S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
+    saveGame(); renderLobby(); connectWs(); await fetchGs();
+  } catch(e) { toast('\u26A0\uFE0F Connection error \u2014 try again'); }
+}
+
+document.getElementById('joinBtn').addEventListener('click', doJoin);
+document.getElementById('codeInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doJoin();
 });
 
 document.getElementById('botsBtn').addEventListener('click', function() {
