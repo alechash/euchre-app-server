@@ -1294,34 +1294,43 @@ function renderActions(gs) {
   var body     = document.getElementById('act-body');
   var phase    = gs.phase;
 
-  var myTurnInTrump =
-    (phase === 'trump_round1' || phase === 'trump_round2') &&
-    gs.trumpCall && gs.trumpCall.currentSeat === S.seat;
+  // Use the actions list to determine what kind of decision is needed.
+  // (gs.trumpCall is not part of ClientGameState so we can't use it.)
+  var acts     = S.actions;
+  var hasOrderUp   = acts.indexOf('order_up')          !== -1;
+  var hasCallTrump = acts.indexOf('call_trump')         !== -1;
+  var hasDiscard   = acts.indexOf('discard')            !== -1;
+  var hasPlayCard  = acts.indexOf('play_card')          !== -1;
+  var hasGoAlone   = acts.indexOf('go_alone')           !== -1;
+  var hasPartner   = acts.indexOf('play_with_partner')  !== -1;
+  var hasPass      = acts.indexOf('pass')               !== -1;
 
-  var hasGoAlone =
-    S.actions.indexOf('go_alone') !== -1 ||
-    S.actions.indexOf('play_with_partner') !== -1;
-
-  if (phase === 'waiting' || phase === 'dealing') {
+  // Nothing for this player to decide right now
+  if (acts.length === 0 || phase === 'waiting' || phase === 'dealing') {
     overlay.style.display = 'none';
     return;
   }
 
-  // Discard: handled by hand cards, no panel needed
-  if (phase === 'discard' && gs.hand && gs.hand.dealerSeat === S.seat) {
+  // Discard / play-card: handled by clicking cards in hand
+  if (hasDiscard || hasPlayCard) {
     overlay.style.display = 'none';
     return;
   }
 
-  // Trump Round 1
-  if (phase === 'trump_round1' && myTurnInTrump) {
-    var fc   = gs.hand && gs.hand.flippedCard;
+  // ── Trump Round 1 ──────────────────────────────────────────
+  // validActions: ['pass', 'order_up', (optional) 'go_alone']
+  // go_alone here = order up AND declare alone (no suit needed)
+  if (hasOrderUp || (hasPass && phase === 'trump_round1')) {
+    var fc    = gs.hand && gs.hand.flippedCard;
     var fcTxt = fc ? (fc.rank + ' of ' + fc.suit) : 'the card';
     heading.textContent = 'Order up the ' + fcTxt + '?';
     var html = '<div class="action-btns">';
-    if (S.actions.indexOf('order_up') !== -1)
+    if (hasOrderUp)
       html += '<button class="btn btn-gold" data-a="order_up">Order Up \u2191</button>';
-    if (S.actions.indexOf('pass') !== -1)
+    if (hasGoAlone)
+      html += '<button class="btn btn-gold" data-a="go_alone" style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">'
+        + 'Go Alone! \uD83C\uDFAF</button>';
+    if (hasPass)
       html += '<button class="btn btn-ghost" data-a="pass">Pass</button>';
     html += '</div>';
     body.innerHTML = html;
@@ -1329,9 +1338,11 @@ function renderActions(gs) {
     return;
   }
 
-  // Trump Round 2
-  if (phase === 'trump_round2' && myTurnInTrump) {
-    heading.textContent = 'Name a trump suit';
+  // ── Trump Round 2 ──────────────────────────────────────────
+  // validActions: ['call_trump', (optional) 'go_alone', (optional) 'pass']
+  // go_alone here = call THAT suit AND play alone — needs a suit, so we
+  // show a second row of suit buttons labelled "Alone".
+  if (hasCallTrump) {
     var disabled = gs.hand && gs.hand.flippedCard ? gs.hand.flippedCard.suit : null;
     var suitDefs = [
       { suit: 'hearts',   sym: '\u2665', col: 'red'   },
@@ -1339,17 +1350,46 @@ function renderActions(gs) {
       { suit: 'clubs',    sym: '\u2663', col: 'black' },
       { suit: 'spades',   sym: '\u2660', col: 'black' }
     ];
-    var html = '<div class="suit-grid">';
-    for (var s = 0; s < suitDefs.length; s++) {
-      var sd  = suitDefs[s];
-      var dis = sd.suit === disabled ? ' disabled' : '';
-      html += '<button class="suit-opt ' + sd.col + '"' + dis
-        + ' data-suit="' + sd.suit + '">'
-        + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
-        + '</button>';
+
+    if (hasGoAlone) {
+      heading.textContent = 'Name trump — or go alone';
+      var html = '<div style="font-size:.7rem;color:var(--text-dim);margin-bottom:6px;text-align:center">With partner:</div>'
+        + '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' data-suit="' + sd.suit + '">'
+          + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
+          + '</button>';
+      }
+      html += '</div>';
+      html += '<div style="font-size:.7rem;color:var(--gold);margin:10px 0 6px;text-align:center">\uD83C\uDFAF Go Alone:</div>'
+        + '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' style="border-color:#7c3aed;opacity:.85"'
+          + ' data-alone-suit="' + sd.suit + '">'
+          + sd.sym + ' Alone</button>';
+      }
+      html += '</div>';
+    } else {
+      heading.textContent = 'Name a trump suit';
+      var html = '<div class="suit-grid">';
+      for (var s = 0; s < suitDefs.length; s++) {
+        var sd  = suitDefs[s];
+        var dis = sd.suit === disabled ? ' disabled' : '';
+        html += '<button class="suit-opt ' + sd.col + '"' + dis
+          + ' data-suit="' + sd.suit + '">'
+          + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
+          + '</button>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
-    if (S.actions.indexOf('pass') !== -1)
+
+    if (hasPass)
       html += '<div class="action-btns" style="margin-top:10px">'
         + '<button class="btn btn-ghost" data-a="pass">Pass</button></div>';
     body.innerHTML = html;
@@ -1357,13 +1397,15 @@ function renderActions(gs) {
     return;
   }
 
-  // Go alone decision
-  if (hasGoAlone) {
+  // ── Standalone go_alone / play_with_partner ────────────────
+  // Only reached if validActions has ONLY those (not mixed with trump actions).
+  if (hasGoAlone || hasPartner) {
     heading.textContent = 'Go Alone?';
     var html = '<div class="action-btns">';
-    if (S.actions.indexOf('go_alone') !== -1)
-      html += '<button class="btn btn-gold" data-a="go_alone">Go Alone! \uD83C\uDFAF</button>';
-    if (S.actions.indexOf('play_with_partner') !== -1)
+    if (hasGoAlone)
+      html += '<button class="btn btn-gold" data-a="go_alone"'
+        + ' style="background:linear-gradient(135deg,#7c3aed,#5b21b6)">Go Alone! \uD83C\uDFAF</button>';
+    if (hasPartner)
       html += '<button class="btn btn-ghost" data-a="play_with_partner">Play with Partner</button>';
     html += '</div>';
     body.innerHTML = html;
@@ -1387,14 +1429,23 @@ function doCallTrump(suit) {
   S.actions = []; S.myTurn = false;
   if (S.gs) renderGame();
 }
+function doGoAlone(suit) {
+  // suit is only needed in round 2; in round 1 go_alone has no suit
+  var action = suit ? { type: 'go_alone', suit: suit } : { type: 'go_alone' };
+  sendAction(action);
+  S.actions = []; S.myTurn = false;
+  if (S.gs) renderGame();
+}
 // Delegated listener for all action-panel buttons (avoids inline onclick quoting issues)
 document.getElementById('act-body').addEventListener('click', function(e) {
   var btn = e.target;
   while (btn && btn !== this) {
-    var a    = btn.getAttribute && btn.getAttribute('data-a');
-    var suit = btn.getAttribute && btn.getAttribute('data-suit');
-    if (a)    { doAct(a);        return; }
-    if (suit) { doCallTrump(suit); return; }
+    var a         = btn.getAttribute && btn.getAttribute('data-a');
+    var suit      = btn.getAttribute && btn.getAttribute('data-suit');
+    var aloneSuit = btn.getAttribute && btn.getAttribute('data-alone-suit');
+    if (a)         { doAct(a);            return; }
+    if (suit)      { doCallTrump(suit);   return; }
+    if (aloneSuit) { doGoAlone(aloneSuit); return; }
     btn = btn.parentNode;
   }
 });
