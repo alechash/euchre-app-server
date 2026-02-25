@@ -33,6 +33,10 @@ interface WebSocketAttachment {
  * - Processes game actions and broadcasts updates
  * - Runs bot turns automatically
  */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export class GameRoom {
   private state: DurableObjectState;
   private env: Env;
@@ -503,7 +507,8 @@ export class GameRoom {
 
     // Handle hand-over -> next hand transition
     if (this.gameState.phase === 'hand_over') {
-      // Brief pause before next hand (handled client-side, we advance immediately)
+      this.broadcastGameState(); // show completed hand before advancing
+      await sleep(2600);        // let clients display hand result
       this.gameState = advanceToNextHand(this.gameState);
       await this.saveState();
     }
@@ -523,23 +528,16 @@ export class GameRoom {
   private async processBotTurns(): Promise<void> {
     if (!this.gameState) return;
 
-    // Process bot turns in a loop (bots play immediately)
     let iterations = 0;
-    const maxIterations = 100; // Safety limit
+    const maxIterations = 100;
 
     while (iterations < maxIterations) {
       iterations++;
 
-      if (this.gameState.phase === 'game_over' || this.gameState.phase === 'waiting') {
-        break;
-      }
+      if (this.gameState.phase === 'game_over' || this.gameState.phase === 'waiting') break;
 
-      // Handle hand-over -> next hand
-      if (this.gameState.phase === 'hand_over') {
-        this.gameState = advanceToNextHand(this.gameState);
-        await this.saveState();
-        this.broadcastGameState();
-      }
+      // hand_over pause + advance is handled inside processAction
+      if (this.gameState.phase === 'hand_over') break;
 
       const currentTurn = getCurrentTurnSeat(this.gameState);
       if (currentTurn === null) break;
@@ -550,8 +548,8 @@ export class GameRoom {
       const botAction = getBotAction(this.gameState, currentTurn);
       if (!botAction) break;
 
-      // Small delay simulation for bot "thinking" (not actual delay on server)
-      // The client can animate this
+      // Pause so clients can animate the current state before the bot acts
+      await sleep(this.gameState.phase === 'playing' ? 950 : 720);
 
       await this.processAction(currentTurn, botAction);
 
@@ -564,6 +562,7 @@ export class GameRoom {
         this.gameState.hand.aloneSeat = currentTurn;
         this.gameState.hand.skippedSeat = partnerSeat(currentTurn);
         await this.saveState();
+        this.broadcastGameState();
       }
     }
   }
