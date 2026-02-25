@@ -1015,12 +1015,17 @@ var S = {
   ptimer:    null,
   // animation state
   lastPlayedSeats: [],   // seats that played since last renderTricks call
+  lastPlayedCard:  null, // {seat,card} of the most recent card_played message
   dealAnim:        false, // animate cards being dealt into hand
   skipTrickRender: false, // pause trick re-render while sweep plays out
   prevCardCount:   0,    // detect new hand deal
   prevTrump:       null, // detect first trump reveal for pill animation
 };
-var _sweepTimer = null;
+var _sweepTimer  = null;
+// Incoming WebSocket message queue — processed one at a time so each
+// animation completes before the next state update overwrites the DOM.
+var _msgQueue    = [];
+var _queueBusy   = false;
 
 var SYMS  = { hearts: '\\u2665', diamonds: '\\u2666', clubs: '\\u2663', spades: '\\u2660' };
 var REDS  = { hearts: true, diamonds: true };
@@ -1041,7 +1046,11 @@ function saveGame() {
 function clearGame() {
   S.gameId = ''; S.invCode = ''; S.seat = -1;
   S.gs = null; S.actions = []; S.vcards = []; S.myTurn = false;
-  _sendQueue = []; // discard any pending messages from the old game
+  S.lastPlayedSeats = []; S.lastPlayedCard = null;
+  S.dealAnim = false; S.skipTrickRender = false;
+  S.prevCardCount = 0; S.prevTrump = null;
+  _sendQueue = []; // discard any pending outgoing messages from the old game
+  _msgQueue = []; _queueBusy = false; // discard any pending incoming messages
   saveGame();
 }
 
@@ -1652,6 +1661,32 @@ function scheduleReconnect() {
   S.rtimer = setTimeout(function() { S.rtimer = null; connectWs(); }, delay);
 }
 
+// ============================================================
+//  MESSAGE QUEUE
+// ============================================================
+// Enqueue an incoming server message. Starts draining if idle.
+function queueMsg(msg) {
+  _msgQueue.push(msg);
+  if (!_queueBusy) _drainQueue();
+}
+
+// Process messages sequentially. handleMsg returns the ms to wait before
+// the next message, so each animation gets uninterrupted screen time.
+function _drainQueue() {
+  // Process all zero-delay messages synchronously in a tight loop,
+  // only yielding when an animation delay is required.
+  while (_msgQueue.length > 0) {
+    var msg   = _msgQueue.shift();
+    var delay = handleMsg(msg);
+    if (delay > 0) {
+      _queueBusy = true;
+      setTimeout(_drainQueue, delay);
+      return;
+    }
+  }
+  _queueBusy = false;
+}
+
 function connectWs() {
   if (!S.gameId || !S.token) return;
   if (S.ws && (S.ws.readyState === WebSocket.OPEN || S.ws.readyState === WebSocket.CONNECTING)) return;
@@ -1672,17 +1707,19 @@ function connectWs() {
   ws.onerror = function() { setConn('off'); };
   ws.onmessage = function(ev) {
     var msg; try { msg = JSON.parse(ev.data); } catch(e) { return; }
-    handleMsg(msg);
+    queueMsg(msg);
   };
 }
 
 // ============================================================
-//  MESSAGE HANDLER
+//  MESSAGE HANDLER  (returns ms to pause before next queued message)
 // ============================================================
 function handleMsg(msg) {
+
   switch (msg.type) {
 
-    case 'game_state':
+    // ── Full state snapshot ───────────────────────────────────
+    case 'game_state': {
       S.gs = msg.state;
       // Detect my seat from players list
       if (S.seat < 0 && msg.state.players) {
@@ -1692,37 +1729,36 @@ function handleMsg(msg) {
           }
         }
       }
-      // Clear stale turn state whenever the server says it's not our turn.
+      // Clear stale turn state whenever the server says it's not our turn
       var gsTurnSeat = msg.state.hand ? msg.state.hand.currentTurnSeat : null;
-      if (gsTurnSeat !== S.seat) {
-        S.myTurn = false; S.actions = []; S.vcards = [];
-      }
-      // Detect new hand → trigger deal animation
+      if (gsTurnSeat !== S.seat) { S.myTurn = false; S.actions = []; S.vcards = []; }
+      // Detect new hand → deal animation
       var gsNewCount = msg.state.hand ? (msg.state.hand.yourCards || []).length : 0;
       if (gsNewCount === 5 && S.prevCardCount < 5) S.dealAnim = true;
       S.prevCardCount = gsNewCount;
-      // Detect trump first appearing → pop the pill
+      // Detect trump first appearing → pill pop
       var gsTrump = msg.state.hand && msg.state.hand.trumpSuit;
-      if (gsTrump && gsTrump !== S.prevTrump) {
-        S.prevTrump = gsTrump;
-        setTimeout(animTrumpPillPop, 40);
-      }
+      if (gsTrump && gsTrump !== S.prevTrump) { S.prevTrump = gsTrump; setTimeout(animTrumpPillPop, 40); }
       if (!gsTrump) S.prevTrump = null;
+      // If a card was just played, let the fly-in animation complete first
+      var flyDelay = S.lastPlayedSeats.length > 0 ? 420 : 0;
       route();
-      break;
+      return flyDelay;
+    }
 
+    // ── Player's action prompt ────────────────────────────────
     case 'your_turn':
       S.actions = msg.validActions || [];
       S.vcards  = msg.validCards   || [];
       S.myTurn  = true;
-      // Notify contextually
       if (S.actions.indexOf('play_card') !== -1)       toast('\u2B50 Your turn \u2014 play a card!');
       else if (S.actions.indexOf('order_up') !== -1)   toast('\uD83C\uDCCF Order up or pass?');
       else if (S.actions.indexOf('call_trump') !== -1) toast('\u2660 Call a trump suit');
       else if (S.actions.indexOf('discard') !== -1)    toast('\u267B\uFE0F Pick a card to discard');
       if (S.gs) renderGame();
-      break;
+      return 0;
 
+    // ── Lobby events ──────────────────────────────────────────
     case 'player_joined':
       toast(msg.displayName + ' joined the table!');
       if (S.gs) {
@@ -1731,49 +1767,79 @@ function handleMsg(msg) {
         S.gs.players.push({ seat: msg.seat, displayName: msg.displayName, isBot: !!msg.isBot });
         renderLobby();
       }
-      break;
+      return 0;
 
     case 'player_left':
       if (S.gs && S.gs.players) {
         S.gs.players = S.gs.players.filter(function(p) { return p.seat !== msg.seat; });
         renderLobby();
       }
-      break;
+      return 0;
 
+    // ── Deal ─────────────────────────────────────────────────
     case 'hand_dealt':
       S.myTurn = false; S.actions = []; S.vcards = [];
       S.dealAnim = true; S.prevCardCount = 0;
       toast('\uD83C\uDCCF Cards dealt \u2014 here we go!');
-      break;
+      return 0;
 
+    // ── Card played ───────────────────────────────────────────
+    // Track seat + card so trick_won can render the 4th card before sweeping.
+    // (Server order is card_played → trick_won → game_state, so the 4th card
+    // is never in the DOM when trick_won fires unless we add it ourselves.)
     case 'card_played':
-      // Track which seat just played so renderTricks can use directional fly-in
       if (S.lastPlayedSeats.indexOf(msg.seat) === -1) S.lastPlayedSeats.push(msg.seat);
-      break;
+      S.lastPlayedCard = { seat: msg.seat, card: msg.card };
+      return 0;
 
-    case 'trump_called':
+    // ── Trump called ──────────────────────────────────────────
+    case 'trump_called': {
       animTrumpFlash(msg.suit);
       var sym2 = SYMS[msg.suit] || msg.suit;
       var who  = playerName(msg.seat);
       toast(who + ' called ' + sym2 + (msg.alone ? ' \u2014 going alone!' : ''));
-      break;
+      // Hold the queue so the trump flash is visible before the next state update
+      return 900;
+    }
 
-    case 'trick_won':
-      animTrickSweep(msg.seat);
-      S.skipTrickRender = true;
-      clearTimeout(_sweepTimer);
-      _sweepTimer = setTimeout(function() { S.skipTrickRender = false; }, 620);
+    // ── Trick completed ───────────────────────────────────────
+    case 'trick_won': {
+      // 1. Render the just-played 4th card into its trick slot with a fly-in,
+      //    so there are 4 cards visible before the sweep begins.
+      if (S.lastPlayedCard) {
+        var lpDir  = seatDir(S.lastPlayedCard.seat);
+        var lpSlot = document.getElementById('ts-' + lpDir);
+        if (lpSlot && !lpSlot.firstElementChild) {
+          lpSlot.innerHTML = cardHTML(S.lastPlayedCard.card, 'sz-sm', 'fly-' + lpDir);
+        }
+        S.lastPlayedCard = null;
+      }
+      // 2. After the fly-in completes (~370 ms), sweep all 4 cards to the winner.
+      var twSeat = msg.seat;
+      setTimeout(function() {
+        animTrickSweep(twSeat);
+        // Mark trick area as frozen so the following game_state doesn't
+        // clear it while the sweep is still playing (500 ms).
+        S.skipTrickRender = true;
+        clearTimeout(_sweepTimer);
+        _sweepTimer = setTimeout(function() { S.skipTrickRender = false; }, 520);
+      }, 370);
+      // 3. Show the winner banner after the fly-in too.
       var twWinner = playerName(msg.seat);
       var twIsMe   = msg.seat === S.seat;
       var twIsPtnr = sameTeam(msg.seat) && !twIsMe;
       var twIcon   = twIsMe ? '\uD83C\uDF89' : twIsPtnr ? '\u2705' : '\u274C';
       var twColor  = (twIsMe || twIsPtnr) ? '#4ade80' : '#f87171';
-      showBanner(twIcon + ' ' + twWinner + ' won the trick', twColor);
-      break;
+      setTimeout(function() { showBanner(twIcon + ' ' + twWinner + ' won the trick', twColor); }, 370);
+      // Hold the queue for fly-in (370) + sweep (500) + buffer (80) = 950 ms
+      // so the subsequent game_state only renders after everything is done.
+      return 950;
+    }
 
+    // ── Hand / score results ──────────────────────────────────
     case 'hand_result':
       showHandResult(msg.result);
-      break;
+      return 0;
 
     case 'score_update':
       if (S.gs) {
@@ -1783,17 +1849,32 @@ function handleMsg(msg) {
         if (msg.scores[S.seat % 2]       !== suOldUs)   animScoreBump(document.getElementById('s-us'));
         if (msg.scores[1 - (S.seat % 2)] !== suOldThem) animScoreBump(document.getElementById('s-them'));
       }
-      break;
+      return 0;
 
+    // ── Game over ─────────────────────────────────────────────
     case 'game_over':
       showGameOver(msg.winningTeam, msg.scores);
-      break;
+      return 0;
 
+    // ── Misc ──────────────────────────────────────────────────
     case 'error':
       toast('\u26A0\uFE0F ' + msg.message, 5000);
-      break;
+      return 0;
 
-    case 'pong': break;
+    case 'chat':
+      return 0;
+
+    case 'trump_passed':
+      return 0;
+
+    case 'dealer_discard':
+      return 0;
+
+    case 'pong':
+      return 0;
+
+    default:
+      return 0;
   }
 }
 
