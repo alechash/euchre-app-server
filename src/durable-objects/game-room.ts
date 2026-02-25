@@ -272,6 +272,7 @@ export class GameRoom {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     try {
+      if (!this.initialized) { await this.loadState(); this.initialized = true; }
       const data = JSON.parse(message as string) as ClientMessage;
       const conn = this.findConnection(ws);
       if (!conn) return;
@@ -283,6 +284,7 @@ export class GameRoom {
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
+    if (!this.initialized) { await this.loadState(); this.initialized = true; }
     const conn = this.findConnection(ws);
     if (conn && this.gameState) {
       this.gameState.players[conn.seat].connected = false;
