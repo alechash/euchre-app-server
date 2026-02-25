@@ -1320,9 +1320,9 @@ function renderActions(gs) {
     heading.textContent = 'Order up the ' + fcTxt + '?';
     var html = '<div class="action-btns">';
     if (S.actions.indexOf('order_up') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\'order_up\')">Order Up \u2191</button>';
+      html += '<button class="btn btn-gold" data-a="order_up">Order Up \u2191</button>';
     if (S.actions.indexOf('pass') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\'pass\')">Pass</button>';
+      html += '<button class="btn btn-ghost" data-a="pass">Pass</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
@@ -1344,14 +1344,14 @@ function renderActions(gs) {
       var sd  = suitDefs[s];
       var dis = sd.suit === disabled ? ' disabled' : '';
       html += '<button class="suit-opt ' + sd.col + '"' + dis
-        + ' onclick="doCallTrump(\'' + sd.suit + '\')">'
+        + ' data-suit="' + sd.suit + '">'
         + sd.sym + ' ' + sd.suit.charAt(0).toUpperCase() + sd.suit.slice(1)
         + '</button>';
     }
     html += '</div>';
     if (S.actions.indexOf('pass') !== -1)
       html += '<div class="action-btns" style="margin-top:10px">'
-        + '<button class="btn btn-ghost" onclick="doAct(\'pass\')">Pass</button></div>';
+        + '<button class="btn btn-ghost" data-a="pass">Pass</button></div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
     return;
@@ -1362,9 +1362,9 @@ function renderActions(gs) {
     heading.textContent = 'Go Alone?';
     var html = '<div class="action-btns">';
     if (S.actions.indexOf('go_alone') !== -1)
-      html += '<button class="btn btn-gold" onclick="doAct(\'go_alone\')">Go Alone! \uD83C\uDFAF</button>';
+      html += '<button class="btn btn-gold" data-a="go_alone">Go Alone! \uD83C\uDFAF</button>';
     if (S.actions.indexOf('play_with_partner') !== -1)
-      html += '<button class="btn btn-ghost" onclick="doAct(\'play_with_partner\')">Play with Partner</button>';
+      html += '<button class="btn btn-ghost" data-a="play_with_partner">Play with Partner</button>';
     html += '</div>';
     body.innerHTML = html;
     overlay.style.display = 'flex';
@@ -1387,8 +1387,17 @@ function doCallTrump(suit) {
   S.actions = []; S.myTurn = false;
   if (S.gs) renderGame();
 }
-window.doAct = doAct;
-window.doCallTrump = doCallTrump;
+// Delegated listener for all action-panel buttons (avoids inline onclick quoting issues)
+document.getElementById('act-body').addEventListener('click', function(e) {
+  var btn = e.target;
+  while (btn && btn !== this) {
+    var a    = btn.getAttribute && btn.getAttribute('data-a');
+    var suit = btn.getAttribute && btn.getAttribute('data-suit');
+    if (a)    { doAct(a);        return; }
+    if (suit) { doCallTrump(suit); return; }
+    btn = btn.parentNode;
+  }
+});
 
 // ============================================================
 //  WEBSOCKET
@@ -1402,8 +1411,18 @@ function setConn(state) {
   txt.textContent = map[state][1];
 }
 
+var _sendQueue = [];
 function send(msg) {
-  if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(JSON.stringify(msg));
+  if (S.ws && S.ws.readyState === WebSocket.OPEN) {
+    S.ws.send(JSON.stringify(msg));
+  } else {
+    _sendQueue.push(msg); // hold until socket opens
+  }
+}
+function flushQueue() {
+  while (_sendQueue.length && S.ws && S.ws.readyState === WebSocket.OPEN) {
+    S.ws.send(JSON.stringify(_sendQueue.shift()));
+  }
 }
 function sendAction(action) { send({ type: 'action', action: action }); }
 
@@ -1431,6 +1450,7 @@ function connectWs() {
     S.rattempt = 0; clearTimers();
     S.ptimer = setInterval(function() { send({ type: 'ping', ts: Date.now() }); }, 25000);
     setConn('live');
+    flushQueue();
     toast('\u2705 Connected!');
   };
   ws.onclose = function() { clearTimers(); setConn('off'); scheduleReconnect(); };
@@ -1640,11 +1660,13 @@ document.getElementById('nameInput').addEventListener('keydown', function(e) {
 // ============================================================
 document.getElementById('createBtn').addEventListener('click', async function() {
   if (!S.token) { toast('Enter your name first!'); return; }
-  var res  = await api('/api/games', { method: 'POST', body: JSON.stringify({}) });
-  var data = await res.json();
-  if (!res.ok) { toast('Could not create game'); return; }
-  S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
-  saveGame(); renderLobby(); connectWs(); await fetchGs();
+  try {
+    var res  = await api('/api/games', { method: 'POST', body: JSON.stringify({}) });
+    var data = await res.json();
+    if (!res.ok) { toast('Could not create game: ' + (data.error || 'try again')); return; }
+    S.gameId = data.gameId; S.invCode = data.inviteCode; S.seat = data.seat;
+    saveGame(); renderLobby(); connectWs(); await fetchGs();
+  } catch(e) { toast('\u26A0\uFE0F Connection error \u2014 try again'); }
 });
 
 async function doJoin() {
