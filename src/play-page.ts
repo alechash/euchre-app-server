@@ -690,6 +690,101 @@ export function renderPlayPage(): string {
     .hand-flash h3 { font-size: 1.4rem; font-weight: 800; margin-bottom: 6px; }
     .hand-flash p  { color: var(--text-dim); font-size: .88rem; }
 
+    /* ══ Animations ══ */
+
+    /* Bot thinking dots */
+    .thinking-dots { display:inline-flex; gap:2px; align-items:center; margin-left:4px; }
+    .thinking-dots span {
+      display:inline-block; width:3px; height:3px; border-radius:50%;
+      background:var(--gold); animation:dot-bounce .9s infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay:.18s; }
+    .thinking-dots span:nth-child(3) { animation-delay:.36s; }
+    @keyframes dot-bounce {
+      0%,80%,100% { transform:translateY(0);   opacity:.2; }
+      40%          { transform:translateY(-4px); opacity:1; }
+    }
+
+    /* Card deal into hand */
+    @keyframes card-deal {
+      from { opacity:0; transform:translateY(-55px) rotateZ(-12deg) scale(.5); }
+      to   { opacity:1; transform:translateY(0)      rotateZ(0)       scale(1); }
+    }
+    .card-deal-in { animation:card-deal .42s cubic-bezier(.22,.68,0,1.3) both; }
+
+    /* Opponent facedown card deal */
+    @keyframes face-deal {
+      from { opacity:0; transform:scale(.4) translateY(-18px); }
+      to   { opacity:1; transform:scale(1)  translateY(0); }
+    }
+    .face-deal-in { animation:face-deal .3s ease-out both; }
+
+    /* Directional trick-card fly-ins */
+    @keyframes fly-south { from{opacity:0;transform:translateY(44px)  scale(.65)} to{opacity:1;transform:none} }
+    @keyframes fly-north { from{opacity:0;transform:translateY(-44px) scale(.65)} to{opacity:1;transform:none} }
+    @keyframes fly-west  { from{opacity:0;transform:translateX(-44px) scale(.65)} to{opacity:1;transform:none} }
+    @keyframes fly-east  { from{opacity:0;transform:translateX(44px)  scale(.65)} to{opacity:1;transform:none} }
+    .fly-south { animation:fly-south .32s cubic-bezier(.22,.68,0,1.3); }
+    .fly-north { animation:fly-north .32s cubic-bezier(.22,.68,0,1.3); }
+    .fly-west  { animation:fly-west  .32s cubic-bezier(.22,.68,0,1.3); }
+    .fly-east  { animation:fly-east  .32s cubic-bezier(.22,.68,0,1.3); }
+
+    /* Trick sweep toward winner */
+    @keyframes sweep-n { to{opacity:0;transform:translateY(-70px) scale(.3)} }
+    @keyframes sweep-s { to{opacity:0;transform:translateY(70px)  scale(.3)} }
+    @keyframes sweep-w { to{opacity:0;transform:translateX(-70px) scale(.3)} }
+    @keyframes sweep-e { to{opacity:0;transform:translateX(70px)  scale(.3)} }
+    .sweep-north { animation:sweep-n .5s ease-in forwards; }
+    .sweep-south { animation:sweep-s .5s ease-in forwards; }
+    .sweep-west  { animation:sweep-w .5s ease-in forwards; }
+    .sweep-east  { animation:sweep-e .5s ease-in forwards; }
+
+    /* Trump-called centre flash */
+    @keyframes trump-pop {
+      0%  { opacity:0; transform:translate(-50%,-50%) scale(.2)  rotate(-15deg); }
+      30% { opacity:1; transform:translate(-50%,-50%) scale(1.3)  rotate(4deg); }
+      55% { opacity:1; transform:translate(-50%,-50%) scale(1)    rotate(0); }
+      100%{ opacity:0; transform:translate(-50%,-50%) scale(1.9); }
+    }
+    .trump-flash-el {
+      position:absolute; top:50%; left:50%;
+      font-size:6rem; pointer-events:none; z-index:55;
+      animation:trump-pop 1.7s ease-out forwards;
+      text-shadow:0 0 40px currentColor;
+    }
+
+    /* Score number bump */
+    @keyframes score-bump {
+      0%  { transform:scale(1); }
+      30% { transform:scale(1.7); color:var(--gold); }
+      100%{ transform:scale(1); }
+    }
+    .score-bump { animation:score-bump .6s ease-out; }
+
+    /* Dealing spinner overlay */
+    .dealing-overlay {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      border-radius:50%; z-index:40; pointer-events:none;
+    }
+    @keyframes deal-spin { from{transform:rotate(0)} to{transform:rotate(360deg)} }
+    .dealing-icon { font-size:2.8rem; animation:deal-spin .65s linear infinite; }
+
+    /* Floating trick / event banner */
+    .anim-banner {
+      position:fixed; top:50%; left:50%;
+      background:rgba(6,13,26,.95); border:1px solid rgba(255,255,255,.18);
+      border-radius:14px; padding:10px 26px; font-size:.95rem; font-weight:700;
+      pointer-events:none; z-index:90; white-space:nowrap;
+      animation:banner-pop .28s ease-out, banner-fade .35s 1.5s ease-in forwards;
+    }
+    @keyframes banner-pop  { from{opacity:0;transform:translate(-50%,-50%) scale(.7)}
+                              to  {opacity:1;transform:translate(-50%,-50%) scale(1)} }
+    @keyframes banner-fade { from{opacity:1} to{opacity:0} }
+
+    /* Trump pill reveal */
+    @keyframes pill-pop { from{opacity:0;transform:scale(.4) rotateY(90deg)} to{opacity:1;transform:none} }
+    .trump-pill-pop { animation:pill-pop .42s cubic-bezier(.22,.68,0,1.3); }
+
     /* Responsive */
     @media (max-width: 520px) {
       .table { aspect-ratio: 1 / 1; }
@@ -918,7 +1013,14 @@ var S = {
   rtimer:    null,
   rattempt:  0,
   ptimer:    null,
+  // animation state
+  lastPlayedSeats: [],   // seats that played since last renderTricks call
+  dealAnim:        false, // animate cards being dealt into hand
+  skipTrickRender: false, // pause trick re-render while sweep plays out
+  prevCardCount:   0,    // detect new hand deal
+  prevTrump:       null, // detect first trump reveal for pill animation
 };
+var _sweepTimer = null;
 
 var SYMS  = { hearts: '\\u2665', diamonds: '\\u2666', clubs: '\\u2663', spades: '\\u2660' };
 var REDS  = { hearts: true, diamonds: true };
@@ -1178,7 +1280,17 @@ function renderGame() {
 
       // Active turn glow
       var isActive = gs.hand && gs.hand.currentTurnSeat === seat;
-      np.classList.toggle('myturn', isActive);
+      np.classList.toggle('myturn', !!isActive);
+
+      // Bot thinking dots (shown while it's this bot's turn)
+      var oldDots = np.querySelector('.thinking-dots');
+      if (oldDots) oldDots.remove();
+      if (player.isBot && isActive) {
+        var dotsEl = document.createElement('span');
+        dotsEl.className = 'thinking-dots';
+        dotsEl.innerHTML = '<span></span><span></span><span></span>';
+        np.appendChild(dotsEl);
+      }
     } else {
       pn.textContent = '—';
       td.style.background = '#475569';
@@ -1190,11 +1302,30 @@ function renderGame() {
       oh.innerHTML = '';
       if (player && gs.phase !== 'waiting' && gs.hand) {
         var numCards = Math.max(0, 5 - (gs.hand.completedTricks ? gs.hand.completedTricks.length : 0));
+        var dealThisOpp = S.dealAnim; // same flag — will be cleared after renderHand runs
         for (var c = 0; c < numCards; c++) {
-          oh.innerHTML += facedownHTML('sz-xs');
+          var fd = document.createElement('div');
+          fd.className = 'card back sz-xs' + (dealThisOpp ? ' face-deal-in' : '');
+          if (dealThisOpp) fd.style.animationDelay = (c * 70) + 'ms';
+          fd.innerHTML = '<div class="card-back-inner"></div>';
+          oh.appendChild(fd);
         }
       }
     }
+  }
+
+  // Dealing overlay spinner (phase = 'dealing' is briefly visible on fast connections)
+  var existDealOv = document.getElementById('dealing-overlay');
+  if (gs.phase === 'dealing') {
+    if (!existDealOv) {
+      var ov = document.createElement('div');
+      ov.id = 'dealing-overlay';
+      ov.className = 'dealing-overlay';
+      ov.innerHTML = '<div class="dealing-icon">\uD83C\uDCCF</div>';
+      document.getElementById('the-table').appendChild(ov);
+    }
+  } else {
+    if (existDealOv) existDealOv.parentNode.removeChild(existDealOv);
   }
 
   // Trick area
@@ -1225,6 +1356,7 @@ function renderGame() {
 }
 
 function renderTricks(gs) {
+  if (S.skipTrickRender) return; // let sweep animation finish first
   var slots = ['north','south','east','west','ctr'];
   for (var i = 0; i < slots.length; i++) {
     var el = document.getElementById('ts-' + slots[i]);
@@ -1232,12 +1364,17 @@ function renderTricks(gs) {
   }
   if (!gs.hand || !gs.hand.currentTrick) return;
   var trick = gs.hand.currentTrick;
+  // Build a lookup for recently-played seats so we can apply directional fly-in
+  var playedMap = {};
+  for (var p = 0; p < S.lastPlayedSeats.length; p++) playedMap[S.lastPlayedSeats[p]] = true;
   for (var c = 0; c < trick.cards.length; c++) {
-    var play = trick.cards[c];
-    var dir  = seatDir(play.seat);
-    var slot = document.getElementById('ts-' + dir);
-    if (slot) slot.innerHTML = cardHTML(play.card, 'sz-sm', 'trick-appear');
+    var play    = trick.cards[c];
+    var dir     = seatDir(play.seat);
+    var slot    = document.getElementById('ts-' + dir);
+    var flyClass = playedMap[play.seat] ? ('fly-' + dir) : 'trick-appear';
+    if (slot) slot.innerHTML = cardHTML(play.card, 'sz-sm', flyClass);
   }
+  S.lastPlayedSeats = []; // consumed — reset for next event
 }
 
 function renderHand(gs) {
@@ -1273,8 +1410,11 @@ function renderHand(gs) {
     }
   }
 
+  var dealThisRender = S.dealAnim;
+  if (dealThisRender) S.dealAnim = false; // consume the flag
+
   for (var i = 0; i < cards.length; i++) {
-    (function(card) {
+    (function(card, idx) {
       var playable = false;
       for (var v = 0; v < S.vcards.length; v++) {
         if (S.vcards[v].suit === card.suit && S.vcards[v].rank === card.rank) {
@@ -1286,18 +1426,21 @@ function renderHand(gs) {
 
       var sym  = SYMS[card.suit];
       var col  = REDS[card.suit] ? 'red' : 'black';
-      var cls  = 'card sz-lg ' + col + (canClick ? ' playable' : '') + (dimmed ? ' dimmed' : '');
+      var dealCls = dealThisRender ? ' card-deal-in' : '';
+      var cls  = 'card sz-lg ' + col + dealCls + (canClick ? ' playable' : '') + (dimmed ? ' dimmed' : '');
 
       var wrap = document.createElement('div');
       wrap.style.position = 'relative';
-      wrap.innerHTML = '<div class="' + cls + '">'
-        + '<div class="ccorner tl">' + card.rank + '<br>' + sym + '</div>'
+      var cardEl = document.createElement('div');
+      cardEl.className = cls;
+      if (dealThisRender) cardEl.style.animationDelay = (idx * 80) + 'ms';
+      cardEl.innerHTML = '<div class="ccorner tl">' + card.rank + '<br>' + sym + '</div>'
         + '<div class="ccenter">' + sym + '</div>'
-        + '<div class="ccorner br">' + card.rank + '<br>' + sym + '</div>'
-        + '</div>';
+        + '<div class="ccorner br">' + card.rank + '<br>' + sym + '</div>';
+      wrap.appendChild(cardEl);
 
       if (canClick) {
-        wrap.querySelector('.card').addEventListener('click', function() {
+        cardEl.addEventListener('click', function() {
           var type = isDiscard ? 'discard' : 'play_card';
           sendAction({ type: type, card: card });
           S.vcards = []; S.myTurn = false;
@@ -1305,7 +1448,7 @@ function renderHand(gs) {
         });
       }
       handEl.appendChild(wrap);
-    })(cards[i]);
+    })(cards[i], i);
   }
 }
 
@@ -1550,11 +1693,21 @@ function handleMsg(msg) {
         }
       }
       // Clear stale turn state whenever the server says it's not our turn.
-      // This prevents old actions/panels from lingering after another player acts.
       var gsTurnSeat = msg.state.hand ? msg.state.hand.currentTurnSeat : null;
       if (gsTurnSeat !== S.seat) {
         S.myTurn = false; S.actions = []; S.vcards = [];
       }
+      // Detect new hand → trigger deal animation
+      var gsNewCount = msg.state.hand ? (msg.state.hand.yourCards || []).length : 0;
+      if (gsNewCount === 5 && S.prevCardCount < 5) S.dealAnim = true;
+      S.prevCardCount = gsNewCount;
+      // Detect trump first appearing → pop the pill
+      var gsTrump = msg.state.hand && msg.state.hand.trumpSuit;
+      if (gsTrump && gsTrump !== S.prevTrump) {
+        S.prevTrump = gsTrump;
+        setTimeout(animTrumpPillPop, 40);
+      }
+      if (!gsTrump) S.prevTrump = null;
       route();
       break;
 
@@ -1589,21 +1742,33 @@ function handleMsg(msg) {
 
     case 'hand_dealt':
       S.myTurn = false; S.actions = []; S.vcards = [];
+      S.dealAnim = true; S.prevCardCount = 0;
       toast('\uD83C\uDCCF Cards dealt \u2014 here we go!');
       break;
 
+    case 'card_played':
+      // Track which seat just played so renderTricks can use directional fly-in
+      if (S.lastPlayedSeats.indexOf(msg.seat) === -1) S.lastPlayedSeats.push(msg.seat);
+      break;
+
     case 'trump_called':
+      animTrumpFlash(msg.suit);
       var sym2 = SYMS[msg.suit] || msg.suit;
       var who  = playerName(msg.seat);
       toast(who + ' called ' + sym2 + (msg.alone ? ' \u2014 going alone!' : ''));
       break;
 
     case 'trick_won':
-      var winner = playerName(msg.seat);
-      var isMe   = msg.seat === S.seat;
-      var isPtnr = sameTeam(msg.seat) && !isMe;
-      var icon   = isMe ? '\uD83C\uDF89' : isPtnr ? '\u2705' : '\u274C';
-      toast(icon + ' ' + winner + ' took the trick');
+      animTrickSweep(msg.seat);
+      S.skipTrickRender = true;
+      clearTimeout(_sweepTimer);
+      _sweepTimer = setTimeout(function() { S.skipTrickRender = false; }, 620);
+      var twWinner = playerName(msg.seat);
+      var twIsMe   = msg.seat === S.seat;
+      var twIsPtnr = sameTeam(msg.seat) && !twIsMe;
+      var twIcon   = twIsMe ? '\uD83C\uDF89' : twIsPtnr ? '\u2705' : '\u274C';
+      var twColor  = (twIsMe || twIsPtnr) ? '#4ade80' : '#f87171';
+      showBanner(twIcon + ' ' + twWinner + ' won the trick', twColor);
       break;
 
     case 'hand_result':
@@ -1611,7 +1776,13 @@ function handleMsg(msg) {
       break;
 
     case 'score_update':
-      if (S.gs) S.gs.scores = msg.scores;
+      if (S.gs) {
+        var suOldUs   = S.gs.scores[S.seat % 2];
+        var suOldThem = S.gs.scores[1 - S.seat % 2];
+        S.gs.scores = msg.scores;
+        if (msg.scores[S.seat % 2]       !== suOldUs)   animScoreBump(document.getElementById('s-us'));
+        if (msg.scores[1 - (S.seat % 2)] !== suOldThem) animScoreBump(document.getElementById('s-them'));
+      }
       break;
 
     case 'game_over':
@@ -1632,6 +1803,60 @@ function playerName(seat) {
     if (S.gs.players[i].seat === seat) return S.gs.players[i].displayName;
   }
   return 'Seat ' + seat;
+}
+
+// ============================================================
+//  ANIMATION HELPERS
+// ============================================================
+
+/** Sweep all trick cards toward the winner's direction. */
+function animTrickSweep(winnerSeat) {
+  var winDir = seatDir(winnerSeat);
+  var dirs = ['north', 'south', 'east', 'west'];
+  for (var i = 0; i < dirs.length; i++) {
+    var slotEl = document.getElementById('ts-' + dirs[i]);
+    var child  = slotEl && slotEl.firstElementChild;
+    if (child) child.className += ' sweep-' + winDir;
+  }
+}
+
+/** Flash a large trump-suit symbol in the centre of the table. */
+function animTrumpFlash(suit) {
+  var table = document.getElementById('the-table');
+  if (!table) return;
+  var el = document.createElement('div');
+  el.className = 'trump-flash-el';
+  el.textContent = SYMS[suit] || suit;
+  el.style.color = REDS[suit] ? 'var(--card-red)' : '#e2e8f0';
+  table.appendChild(el);
+  setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 1800);
+}
+
+/** Bump-scale a score element when it changes. */
+function animScoreBump(el) {
+  if (!el) return;
+  el.classList.remove('score-bump');
+  void el.offsetWidth; // force reflow to restart animation
+  el.classList.add('score-bump');
+}
+
+/** Show a floating banner (trick won, etc.) that auto-removes. */
+function showBanner(text, color) {
+  var el = document.createElement('div');
+  el.className = 'anim-banner';
+  el.textContent = text;
+  if (color) el.style.color = color;
+  document.body.appendChild(el);
+  setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 1950);
+}
+
+/** Animate the trump pill popping in when trump is first set. */
+function animTrumpPillPop() {
+  var pill = document.getElementById('trump-pill');
+  if (!pill) return;
+  pill.classList.remove('trump-pill-pop');
+  void pill.offsetWidth;
+  pill.classList.add('trump-pill-pop');
 }
 
 // ============================================================
